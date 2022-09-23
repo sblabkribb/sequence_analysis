@@ -1,7 +1,0 @@
-"0","countstat <- featureCounts(files = ""ENCFF332KDA_rfastp_R1.fastq.gz.subjunc.BAM"",
-                           annot.ext = saf, 
-                           nthreads = 10)
-"
-"2","Error in .get.annotation.file(annot.inbuilt, annot.ext, isGTFAnnotationFile) : 
-  One or more required columns are missing in the provided annotation data. Please refer to help page for annotation format.
-"

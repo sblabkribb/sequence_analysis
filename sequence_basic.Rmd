@@ -25,12 +25,6 @@ https://greendaygh.github.io/kribbr2022/
 
 # Sample description 
 
-- NGS (library) Samples: 3 fastq files 
-- 5k~6kbp, 5~6 genes, SMMO in genome
-- Sent cell pellets, extracted genomic DNA and sequencing
-- sample1: high fluorescence ?? reaction time 
-- sample2: high fluorescence ?? reaction time 
-- sample3: low fluoresscence 
 
 
 # fastq file loading
@@ -54,24 +48,26 @@ BiocManager::install("Rfastp")
 ```{r, eval=F}
 library(Rfastp)
 
-fq <- "https://www.encodeproject.org/files/ENCFF332KDA/@@download/ENCFF332KDA.fastq.gz"
-download.file(fq, "data/ENCFF332KDA.fastq.gz")
+fqfiles <- dir(path = "fastq", pattern = "*.fastq.gz")
 
-json_report <- rfastp(read1 = "data/ENCFF332KDA.fastq.gz", 
-                      outputFastq = "data/ENCFF332KDA_rfastp")
-qcSummary(json_report)
+for(i in 1:length(fqfiles)){
+  cat(i, "\n");flush.console()
+  json_report <- rfastp(read1 = file.path("fastq", fqfiles[i]), 
+                      outputFastq = file.path("outfastq", fqfiles[i]))
+}
+#qcSummary(json_report)
 
-```
+``
+`
 
 
 # prepare a reference sequence  
 
-- Mmusculus as an example 
-
 ```{r, eval=F}
 library(Biostrings)
 
-myref <- readDNAStringSet("data/myref.fa")
+ftnseq <- readDNAStringSet("data/pACBB-Standard FTN sensor.fa")
+petseq <- readDNAStringSet("data/pACBB-Standard PET sensor.fa")
 
 ```
 
