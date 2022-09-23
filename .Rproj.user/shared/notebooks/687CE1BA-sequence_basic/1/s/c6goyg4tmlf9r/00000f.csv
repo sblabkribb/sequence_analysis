@@ -1,0 +1,150 @@
+"0","buildindex(""data/mm10_smallchars"", ""myref.fa"")
+"
+"1","
+"
+"1","        ==========     _____ _    _ ____  _____  ______          _____  
+"
+"1","        =====         / ____| |  | |  _ \|  __ \|  ____|   /\   |  __ \ 
+"
+"1","          =====      | (___ | |  | | |_) | |__) | |__     /  \  | |  | |
+"
+"1","            ====      \___ \| |  | |  _ <|  _  /|  __|   / /\ \ | |  | |
+"
+"1","              ====    ____) | |__| | |_) | | \ \| |____ / ____ \| |__| |
+"
+"1","        ==========   |_____/ \____/|____/|_|  \_\______/_/    \_\_____/
+"
+"1","       Rsubread 2.8.2
+"
+"1","
+"
+"1","//================================= setting ==================================\\
+"
+"1","||                                                                            ||
+"
+"1","||                Index name : mm10_smallchars                                ||
+"
+"1","||               Index space : base space                                     ||
+"
+"1","||               Index split : no-split                                       ||
+"
+"1","||          Repeat threshold : 100 repeats                                    ||
+"
+"1","||              Gapped index : no                                             ||
+"
+"1","||                                                                            ||
+"
+"1","||       Free / total memory : 27.1GB / 31.4GB                                ||
+"
+"1","||                                                                            ||
+"
+"1","||               Input files : 1 file in total                                ||
+"
+"1","||                             o myref.fa                                     ||
+"
+"1","||                                                                            ||
+"
+"1","\\============================================================================//
+"
+"1","
+"
+"1","//================================= Running ==================================\\
+"
+"1","||                                                                            ||
+"
+"1","|| Check the integrity of provided reference sequences ...                    ||
+"
+"1","|| No format issues were found                                                ||
+"
+"1","|| Scan uninformative subreads in reference sequences ...                     ||
+"
+"1","|| 29 uninformative subreads were found.                                      ||
+"
+"1","|| These subreads were excluded from index building.                          ||
+"
+"1","|| Estimate the index size...                                                 ||
+"
+"1","||    8%,   0 mins elapsed, rate=557.3k bps/s                                 ||
+"
+"1","||   16%,   0 mins elapsed, rate=994.2k bps/s                                 ||
+"
+"1","||   25%,   0 mins elapsed, rate=1345.2k bps/s                                ||
+"
+"1","||   33%,   0 mins elapsed, rate=1632.9k bps/s                                ||
+"
+"1","||   41%,   0 mins elapsed, rate=1873.1k bps/s                                ||
+"
+"1","||   50%,   0 mins elapsed, rate=2078.3k bps/s                                ||
+"
+"1","||   58%,   0 mins elapsed, rate=2251.1k bps/s                                ||
+"
+"1","||   66%,   0 mins elapsed, rate=2404.0k bps/s                                ||
+"
+"1","||   75%,   0 mins elapsed, rate=2534.0k bps/s                                ||
+"
+"1","||   83%,   0 mins elapsed, rate=2648.8k bps/s                                ||
+"
+"1","||   91%,   0 mins elapsed, rate=2750.7k bps/s                                ||
+"
+"1","|| 3.0 GB of memory is needed for index building.                             ||
+"
+"1","|| Build the index...                                                         ||
+"
+"1","||    8%,   0 mins elapsed, rate=66.7k bps/s                                  ||
+"
+"1","||   16%,   0 mins elapsed, rate=129.7k bps/s                                 ||
+"
+"1","||   25%,   0 mins elapsed, rate=189.5k bps/s                                 ||
+"
+"1","||   33%,   0 mins elapsed, rate=246.3k bps/s                                 ||
+"
+"1","||   41%,   0 mins elapsed, rate=300.0k bps/s                                 ||
+"
+"1","||   50%,   0 mins elapsed, rate=351.3k bps/s                                 ||
+"
+"1","||   58%,   0 mins elapsed, rate=400.0k bps/s                                 ||
+"
+"1","||   66%,   0 mins elapsed, rate=446.5k bps/s                                 ||
+"
+"1","||   75%,   0 mins elapsed, rate=490.8k bps/s                                 ||
+"
+"1","||   83%,   0 mins elapsed, rate=533.4k bps/s                                 ||
+"
+"1","||   91%,   0 mins elapsed, rate=574.0k bps/s                                 ||
+"
+"1","|| Save current index block...                                                ||
+"
+"1","||  [ 0.0% finished ]                                                         ||
+"
+"1","||  [ 10.0% finished ]                                                        ||
+"
+"1","||  [ 20.0% finished ]                                                        ||
+"
+"1","||  [ 30.0% finished ]                                                        ||
+"
+"1","||  [ 40.0% finished ]                                                        ||
+"
+"1","||  [ 50.0% finished ]                                                        ||
+"
+"1","||  [ 60.0% finished ]                                                        ||
+"
+"1","||  [ 70.0% finished ]                                                        ||
+"
+"1","||  [ 80.0% finished ]                                                        ||
+"
+"1","||  [ 90.0% finished ]                                                        ||
+"
+"1","||  [ 100.0% finished ]                                                       ||
+"
+"1","||                                                                            ||
+"
+"1","||                      Total running time: 0.2 minutes.                      ||
+"
+"1","||             Index data/mm10_smallchars was successfully built.             ||
+"
+"1","||                                                                            ||
+"
+"1","\\============================================================================//
+"
+"1","
+"
