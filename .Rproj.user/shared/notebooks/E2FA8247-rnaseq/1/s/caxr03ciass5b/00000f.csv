@@ -1,0 +1,19 @@
+"0","library(""TxDb.Mmusculus.UCSC.mm10.knownGene"")
+"
+"2","Loading required package: GenomicFeatures
+"
+"2","Loading required package: AnnotationDbi
+"
+"2","Loading required package: Biobase
+"
+"2","Welcome to Bioconductor
+
+    Vignettes contain introductory material; view with 'browseVignettes()'. To cite Bioconductor, see
+    'citation(""Biobase"")', and for packages 'citation(""pkgname"")'.
+
+"
+"2","Registered S3 methods overwritten by 'dbplyr':
+  method         from
+  print.tbl_lazy     
+  print.tbl_sql      
+"

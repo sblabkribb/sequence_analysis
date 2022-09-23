@@ -1,0 +1,27 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+
+```{r, eval=F}
+
+library(readxl)
+library(tidyverse)
+
+```
+
+
+
+```{r, eval=F}
+
+dat1 <- read_excel("ARS comp_1.xls")
+dat1 <- dat1[4:nrow(dat1),1]
+plot(dat1)
+
+tm <- seq(0, 0.004*nrow(dat1), by=0.004)
+
+ref1 <- read_excel("ARS_Analysis.xlsx", sheet=1, skip = 3)
+ref1 %>% select(state, `event start`, `event end`, `current blockade`)
+```
+

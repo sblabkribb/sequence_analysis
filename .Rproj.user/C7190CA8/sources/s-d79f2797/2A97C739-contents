@@ -1,0 +1,675 @@
+---
+title: "Longread barcode sequencing v2"
+author: "한국생명공학연구원 합성생물학전문연구단 "
+date: 2021. 06. 22
+output:
+  pdf_document:
+    toc: yes
+    latex_engine: xelatex
+    number_sections: yes
+  html_document:
+    toc: yes
+    number_sections: yes
+    df_print: paged
+  output: rtf_document
+  word_document:
+    toc: yes
+header-includes: \usepackage[hangul]{kotex}
+mainfont: NanumGothic
+---
+
+
+```{r setup, echo=F, eval=F}
+library(Biostrings)
+library(ShortRead)
+library(DECIPHER)
+library(tidyverse)
+library(GenomicRanges)
+library(readxl)
+```
+
+
+# 목적 
+
+바코드를 이용해서 pooling된 PCR product들을 Nanopore 로 시퀀싱 한 후에 결과 서열을 확인하는 기술로서 빠르고 대량의 서열을 한번에 확인할 수 있는 기술. 
+
+앞서까지의 분석은 1) barcode 서열 확인후 read 분류를 수행한 다음 2) 분류된 read들의 해당 구간 서열을 확인하는 기술임. 그러나 여러 문제로 (앞서 보고서 확인) 반대 순서로 수행하기로 함. 즉, 1) 모든 read를 mapping 후 특정 구간의 서열을 분류한 다음 분류된 read들의 barcode를 확인하는 방식의 분석으로 전환. 
+
+
+분석에서 알고 있는 정보는 가능한 모두 활용하기로 하며 plasmid template 서열과 barcode를 붙여서 pcr를 수행하는 구간의 서열 정보는 실험자로부터 받을 수 있음. 
+
+
+# Nanopore 수행한 Fastq 파일 읽기
+
+`~/153_seqdb/NGS/02_ont/2021\210527cnu_m/` 위치에 저장된 파일 sequencing_data 디렉토리로 복사. `fastq`파일은 `ShortRead` 패키지의 `readFastq` 함수를 사용해서 읽어옴. 
+
+```{r, eval=F}
+
+fastqdir <- file.path("sequence_data", 
+                      "210527cnu_m", 
+                      "20210527_0636_MC-110372_0_ags455_f0a14c5c", 
+                      "fastq_pass", 
+                      "barcode01")
+filenames <- dir(fastqdir, pattern="fastq")
+filenamesfull <- file.path(fastqdir, filenames)
+
+fq <- readFastq(file.path(fastqdir, filenames[1]))
+sread(fq[1:5])
+```
+
+
+# Filtering & Trimming
+
+Nanopore 해독 서열의 filtering 을 위해서 [NanoFilt](https://github.com/wdecoster/nanofilt) 를 사용함. 이를 위해서 `NanoFilt` 소프트웨어를 pip를 이용해서 미리 docker 이미지에 설치해 둘 필요가 있음. phred score는 10, 길이는 500이하 자름. 
+
+```{r, eval=F}
+
+targetdir <- file.path("sequence_data", 
+                      "210527cnu_m", 
+                      "filtered")
+#dir(targetdir, "filtered")
+
+for(i in 1:length(filenames)){
+  targetfilenamefull <- file.path(targetdir, paste0("filtered_", filenames[i]))
+  if(!file.exists(targetfilenamefull)){
+    commandstr <- paste0("NanoFilt -q 10 -l 500 --headcrop 50 ", 
+                         filenamesfull[i], 
+                         " > ", 
+                         targetfilenamefull)
+    tl <- try(system(commandstr))  
+  }
+  #cat(i, "\n"); flush.console()
+}
+
+
+```
+
+
+# Read 전처리
+
+필터링된 데이터들을 읽어들이고 길이 등 데이터를 확인함. 1500bp 이상의 read는 제외함. 
+
+```{r, eval=F}
+
+filenames <- dir(targetdir, pattern="*.fastq")
+filenamesfull <- file.path(targetdir, filenames)
+
+
+for(i in 1:length(filenamesfull)){
+  fq <- readFastq(filenamesfull[i])
+  if(i == 1){
+    myseq <- sread(fq)  
+  }else{
+    myseq <- c(myseq, sread(fq))
+  }
+  #cat(i, "\n"); flush.console()
+}
+
+hist(nchar(myseq), br=100)
+## filtering out > 1500
+selseq <- myseq[-which(nchar(myseq) > 1500)]
+hist(nchar(selseq), br=100)
+cat(length(selseq))
+
+names(selseq) <- as.character(c(1:length(selseq)))
+```
+
+![](images/0527/000004.png)
+
+
+약 20299개의 read 들을 확보 했으며 barcode가 20개 (row4, col5) 이므로 한 샘플당 약 1000개 이상의 완전한 서열을 확보할 수 있으므로 나노포어의 오류율을 감안하더라도 충분히 서열을 ID 할 수 있을 것으로 기대함. 
+
+
+
+
+# Template 서열 모두 Non template 서열로 변환 
+
+read들 중 template strand와 nontemplate strand이 있을 수 있으며 분석의 편의를 위해서 sfgfp 서열을 (ATG부터 300bp) 이용해서 template strand를 검색 후 해당 서열들을 nontemplate strand로 바꿔서 탐색을 진행. `QLI61463.1_super folder green fluorescent protein.fa` 서열이 충남대에서 사용한 서열로 보이며 이 후 mapping에서도 이 파일을 사용
+
+
+```{r, eval=F}
+
+## sfgfp sequence
+fread <- readFasta("QLI61463.1_super folder green fluorescent protein.fa")
+vectorseq <- sread(fread)
+names(vectorseq) <- "vectorplasmid"
+sfgfpseq <- subseq(vectorseq, 708, 1424) 
+sfgfprev <- reverseComplement(sfgfpseq)
+
+## search for reads that match to the part of the sfgfp sequence
+sfgfptemp <- vmatchPattern(subseq(as.character(sfgfprev), 1, 300), selseq, min.mismatch=0, max.mismatch=150) %>% stack
+template_seqname <- as.character(mcols(sfgfptemp)$name)
+#length(template_seqname)
+dnatemplate <- selseq[template_seqname]
+selseq[template_seqname] <- reverseComplement(dnatemplate)
+
+```
+
+3724개 match 되는 read를 찾았으며 이들을 non template 서열로 바꿔줌. 여기서 sfgfp의 mismatch 서열을 전체의 1/2개로 정한 것은 특별히 기준이 있는 것은 아니나 아래 코드에서 해당 서열이 충분히 찾아짐을 확인하고 진행함. 
+
+
+```{r, eval=F}
+
+tmps1 <- DNAString(subseq(as.character(sfgfprev), 1, 300))
+tmps2 <- dnatemplate[[1798]]
+
+aln <- pairwiseAlignment(tmps1, tmps2)
+alnseqs <- c(alignedPattern(aln), alignedSubject(aln))
+
+#library(DECIPHER)
+#BrowseSeqs(alnseqs)
+
+
+```
+
+
+![](images/alignment_confirm.PNG)
+
+
+위 그림과 같이 뒷 부분 780bp 에서부터 sfgfp의 reverse complement 5' 서열이 시작되고 있으므로 template strand가 5'부터 읽힌 것으로 말할 수 있으며 위 read를 nontemplate 서열로 바꿔주면 됨. 
+
+
+
+# Mapping
+
+
+## reference 서열 
+
+본 연구에서는 제한된 구간의 서열만을 랜덤하게 변이시키는 것이고 plasmid 가 고정되어 있기 때문에 denove로 서열의 해독을 추정하는 것보다 처음 template 서열에 mapping을 수행하는 것이 더 바람직함. 본 연구에서 template는 앞서 읽어온 `QLI61463.1_super folder green fluorescent protein.fa`로 읽어온 vectorseq임.
+
+~~~
+fread <- readFasta("QLI61463.1_super folder green fluorescent protein.fa")
+vectorseq <- sread(fread)
+~~~
+
+이 중 PCR을 수행한 서열을 실험자로부터 얻어올 수 있으며 이 서열은 다음 엑셀파일의 첫 번째 서열임 (변이가 들어가 있지 않은 template 서열). 
+
+```{r, eval=F}
+sangerseq <- read_excel("sanger_data/sfGFP initial codon engineering Sanger sequencing results.xlsx")
+
+seqs <- DNAStringSet(sangerseq$Sequence)
+seqnames <- sangerseq$...1
+names(seqs) <- seqnames
+
+
+printSplitString <- function(x, width=getOption("width") - 1){
+  starts <- seq(from=1, to=nchar(x), by=width)
+  for (i in 1:length(starts))
+  cat(substr(x, starts[i], starts[i] + width - 1), "\n")
+}
+
+printSplitString(as.character(seqs[[1]]), width = 100)
+#BrowseSeqs(tmps, patterns = c(pfor, prev))
+
+```
+
+
+
+## mapping 스크립트 만들기 
+
+위에서 선별된 read들 (`selseq`)을 reference에 mapping 하는 과정을 수행함. reference sequence는 "reference.fasta" 파일로 저장함. 또한 선별된 read들은 "reads.fasta"로 저장함. 
+
+```{r, eval=F}
+
+mappingdir <- "mapping"
+referencesdir <- "references"
+readsdir <- "reads"
+samdir <- "sam"
+bamdir <- "bam"
+vcfdir <- "vcf"
+
+## create directories
+dir.create(file.path(mappingdir))
+dir.create(file.path(mappingdir, referencesdir))
+dir.create(file.path(mappingdir, readsdir))
+dir.create(file.path(mappingdir, samdir))
+dir.create(file.path(mappingdir, bamdir))
+dir.create(file.path(mappingdir, vcfdir))
+
+referencefilenamefull <- file.path(mappingdir, 
+                                   referencesdir, 
+                                   paste0("reference.fasta"))
+writeXStringSet(seqs[1], filepath = referencefilenamefull)
+
+#myaln <- pairwiseAlignment(seqs[[1]], vectorseq)
+#alnseqs <- c(alignedPattern(myaln), alignedSubject(myaln))
+#BrowseSeqs(alnseqs)
+
+## input files (significant reads that have both bcfor[[1]], bcrev)
+readsfilenamefull <- file.path(mappingdir, 
+                           readsdir, 
+                           paste0("reads.fasta"))
+writeXStringSet(selseq, filepath = readsfilenamefull)
+
+```
+
+mapping을 수행하기 위한 스크립트를 만듦. 사전에 bowtie2, samtools, bcftools 설치되어 있어야함 (bowtie2 이전에 bwa를 이용한 mappping을 수행했으나 vcf 생성에 오류를 발생시키는 문제로 bowtie2로 전환). mapping.sh 라는 쉘스크립트를 생성하였으며 해당 스크립트 실행은 아래 vcf 파일까지 생성 후 terminal에서 `/bin/bash mapping.sh`로 실행
+
+```{r, eval=F}
+shellscript_filename <- "mapping.sh"
+write.table("#!/bin/bash", file = shellscript_filename, quote=F, row.names = F, col.names = F)
+
+## generate index
+bowtie2indexrun <- paste0("bowtie2-build ",
+                 referencefilenamefull,
+                 " ", 
+                 referencefilenamefull)
+write.table(bowtie2indexrun, file = shellscript_filename, quote=F, row.names = F, col.names = F, append = T)
+
+## align with bowtie2
+samfilefull <- file.path(mappingdir, samdir, paste0("mapped_reads.sam"))
+bowtie2memrun <- paste0("bowtie2  -f --local -x ",
+                 referencefilenamefull,
+                 " -U ",
+                 readsfilenamefull,
+                 " -S ",
+                 samfilefull
+                 )
+write.table(bowtie2memrun, file = shellscript_filename, quote=F, row.names = F, col.names = F, append = T)
+
+
+
+## convert sam to bam
+bamfilefull <- file.path(file.path(mappingdir, bamdir, paste0("mapped_reads.bam")))
+samtoolsviewrun <- paste0("samtools view -S -b ", 
+                 samfilefull, 
+                 " > ", 
+                 bamfilefull
+                 )
+#system(samtoolsviewrun)
+write.table(samtoolsviewrun, file = shellscript_filename, quote=F, row.names = F, col.names = F, append = T)
+
+## sort
+sortbamfilefull <- file.path(file.path(mappingdir, bamdir, paste0("mapped_reads_sorted.bam")))
+samtoolssortrun <- paste0("samtools sort -o ", 
+                 sortbamfilefull, 
+                 " ", 
+                 bamfilefull
+                 )
+#system(samtoolssortrun)
+write.table(samtoolssortrun, file = shellscript_filename, quote=F, row.names = F, col.names = F, append = T)
+
+
+## indexing
+samtoolsindexrun <- paste0("samtools index ", 
+                 sortbamfilefull)
+#system(samtoolsindexrun)
+write.table(samtoolsindexrun, file = shellscript_filename, quote=F, row.names = F, col.names = F, append = T)
+
+
+## flagstat
+samtoolsstatrun <- paste0("samtools flagstat ", sortbamfilefull)
+#system(samtoolsstatrun)
+#write.table(samtoolsstatrun, file = shellscript_filename, quote=F, row.names = F, col.names = F, append = T)
+```
+
+
+위와 같이 모든 read들을 mapping 후 아래 igv 브라우져로 확인한 결과 특정 위치에 variant 들이 확인 되었음. 
+
+![](images/bamfileigv1.PNG){width=400}
+
+
+![](images/bamfileigv.PNG){width=400}
+
+
+쉘 스크립트는 다음과 같이 실행 
+
+```{r, eval=F}
+system("/bin/bash mapping.sh")
+```
+
+
+
+
+# variant call
+
+bcftools와 같은 variant dection 툴을 이용해서 확인함. vcalling.sh 파일을 만들어서 사용함. 
+
+
+```{r, eval=F}
+shellscript_filename2 <- "vcalling.sh"
+write.table("#!/bin/bash", file = shellscript_filename2, quote=F, row.names = F, col.names = F)
+## bcftools
+# mpilup: calculate coverage
+bcffilefull <- file.path(file.path(mappingdir, vcfdir, paste0("mapped_raw.bcf")))
+bcftoolsrun <- paste0("bcftools mpileup --output ",
+#bcftoolsrun <- paste0("bcftools mpileup -Ou --output ", 
+                 bcffilefull, 
+                 " -f ", 
+                 referencefilenamefull, 
+                 " ",
+                 sortbamfilefull
+                 )
+#system(bcftoolsrun)
+write.table(bcftoolsrun, file = shellscript_filename2, quote=F, row.names = F, col.names = F, append = T)
+
+
+## bcftools
+# call variants
+vcffilefull <- file.path(file.path(mappingdir, vcfdir, paste0("mapped_variants.vcf")))
+bcftoolscallrun <- paste0("bcftools call -m -v -o", 
+                 vcffilefull, 
+                 " ", 
+                 bcffilefull
+                 )
+#system(bcftoolscallrun)
+write.table(bcftoolscallrun, file = shellscript_filename2, quote=F, row.names = F, col.names = F, append = T)
+```
+
+
+
+```{r, eval=F}
+system("/bin/bash vcalling.sh")
+
+
+library(vcfR)
+## see variants
+vcf <- read.vcfR(vcffilefull, verbose = FALSE)
+vcf@fix[,"POS"]
+vcf@fix
+
+
+```
+
+
+
+
+# bam 파일 읽고 consensus matrix 분석
+
+ bam 파일을 consensus matrix로 변환하기 위해서 `GenomicAlignments` 패키지의 `stackStringsFromBam` 함수를 사용함. scanBam 함수로 bam파일을 읽을 수도 있고 동일한 파라메터를 사용해서 `stackStringsFromBam`함수를 사용함. 
+
+```{r, eval=F}
+library(GenomicRanges)
+library(GenomicAlignments)
+
+bamfiles <- BamFileList(sortbamfilefull)
+#seqinfo(bamfiles)
+
+region1 <- GRanges("sfgfp", IRanges(1, nchar(seqs[[1]])))
+param <- ScanBamParam(which = region1, 
+                      what=c("qname", "pos", "qwidth", "seq", "qual", "cigar"))
+
+# get consensusTable
+mappedseqs <- stackStringsFromBam(bamfiles[[1]], param=param, use.names=TRUE)
+mappedmat <- consensusMatrix(mappedseqs, as.prob=F)
+mappedmat[1:4,92:97]
+#ConsensusSequence(mappedseqs)
+```
+
+위와 같이 92번부터 97번 위치의 ACGT에 해당하는 서열을 확인할 수 있으며 각 빈도수는 IGV로 확인한 결과와 동일함을 확인함. 여기서 우리가 필요한 정보는 92~97까지의 각 read들이 갖는 서열이므로 `mappedseqs` 정보를 사용함. DNAStringSet 서열로부터 각 92~97 ranges 에 해당하는 위치의 서열은 `BSgenome::getSeq` 함수를 사용함. 
+
+
+```{r, eval=F}
+
+gr1 <- GRanges(seqnames=names(mappedseqs),
+               rep(IRanges(start=92:97), length(mappedseqs)))
+
+extractedseqs <- BSgenome::getSeq(mappedseqs, gr1)
+
+selidxl <- !grepl("-", as.character(extractedseqs))
+selreads <- as.character(extractedseqs[selidxl])
+tmptbl <- as.data.frame(table(selreads))
+
+mutseq <- c("GTTCCC", 
+  "TGCAGC",
+  "TGTCAA",
+  "CCAGTC",
+  "CTTGGT",
+  
+  "CCTCTG",
+  "GGGGGC",
+  "TTCGGT",
+  "TGCAGC",
+  "GTCTGC",
+  
+  "GATGTC",
+  "TGTTGC",
+  "CCTTGC",
+  "GGTCCG",
+  "TTATCT",
+  
+  "GGTGAG",
+  "GTCCTC",
+  "CCTCTT",
+  "GGGGAT",
+  "CGCGGG")
+
+names(mutseq) <- paste0(rep(LETTERS[1:4], each=5), 1:5)
+mutseq <- mutseq[!duplicated(mutseq)]
+
+
+
+selmotifsfreq <- tmptbl %>% 
+  arrange(desc(Freq)) %>% 
+  dplyr::filter(Freq > 10) %>% 
+  dplyr::filter(selreads %in% mutseq)
+
+selmotifseq <- selmotifsfreq  %>% 
+  mutate(motifs = as.character(selreads)) %>% 
+  pull(motifs) 
+```
+
+
+~~~
+ [1] "TTCGGT" "TGCAGC" "CCTCTG" "TGTCAA" "GGGGAT" "GTCTGC" "CCTCTT" "CTTGGT" "GTCCTC"
+[10] "GGTGAG" "CGCGGG" "TGTTGC" "GGGGGC" "GGTCCG"
+~~~
+
+위와 같이 19개의 (2개 중복) 서열 중 14개의 서열 모티프만이 탐색되었고 각 100개 이상의 read 들이 있음을 알 수 있음. 
+
+
+# 해당 motif 가진 read 추출 
+
+위에 사용된 reference 서열은 barcode 정보가 없는 (잘려있는) read들만 선별되어 분석이 되었음. 즉, 해당 reference 서열의 양 끝쪽이 잘려있는 상태이며 잘린 서열들에는 barcode가 달려있음. 따라서 mapping 된 서열들의 인덱스를 구한 뒤 ummapping된 양 끝 서열을 찾아내고 이 서열들에 barcode를 분석해서 샘플을 확인하는 과정으로 진행. bam 파일이 가진 cigar 정보에는 align되는 서열의 시작과 끝에대한 정보가 있음. "S"문자는 soft clipping으로 앞 부분 숫자는 각 bp의 길이를 나타냄. 이 정보를 활용해서 앞과 뒤 (tail) ummmaping된 서열을 찾아냄. 
+
+
+
+```{r, eval=F}
+library(GenomicRanges)
+library(GenomicAlignments)
+
+bamfiles <- BamFileList(sortbamfilefull)
+#seqinfo(bamfiles)
+
+region1 <- GRanges("sfgfp", IRanges(1, nchar(seqs[[1]])))
+param <- ScanBamParam(which = region1, 
+                      what=c("qname", "pos", "qwidth", "seq", "qual", "cigar"))
+bam <- scanBam(bamfiles[[1]], param=param) 
+
+# cigar utils https://www.rdocumentation.org/packages/GenomicAlignments/versions/1.8.4/topics/cigar-utils
+query_nomap_range <- sapply(bam[[1]]$cigar, function(x){
+  cigarRangesAlongQuerySpace(x)[[1]][explodeCigarOps(x)[[1]]=="S",]})
+
+query_nomap_start <- lapply(query_nomap_range, function(x){ x[1,] }) 
+query_nomap_end <- lapply(query_nomap_range, function(x){x[length(x),]}) 
+
+queryseqs <- bam[[1]]$seq
+names(queryseqs) <- bam[[1]]$qname
+
+## head
+strt <- lapply(query_nomap_start, start) %>% unlist
+ed <- lapply(query_nomap_start, end) %>% unlist
+query_nomap_head <- GRanges(bam[[1]]$qname, IRanges(strt, ed), "+")
+exheadseqs <- BSgenome::getSeq(queryseqs, query_nomap_head)
+names(exheadseqs) <- names(queryseqs)
+
+## tail
+strt <- lapply(query_nomap_end, start) %>% unlist
+ed <- lapply(query_nomap_end, end) %>% unlist
+query_nomap_tail <- GRanges(bam[[1]]$qname, IRanges(strt, ed), "+")
+extailseqs <- BSgenome::getSeq(queryseqs, query_nomap_tail)
+names(extailseqs) <- names(queryseqs)
+
+
+selheadseq <- exheadseqs[selidxl]
+seltailseq <- extailseqs[selidxl]
+
+## find indexes of each motifs
+index_list <- sapply(selmotifseq, function(x){
+  which(selreads %in% x)
+})
+
+subselheadseq <- lapply(index_list, function(x){
+  selheadseq[x]
+})
+
+subseltailseq <- lapply(index_list, function(x){
+  seltailseq[x]
+})
+
+```
+
+
+위 subselheadseq와 subseltailseq에는 각 해당 motif 14개에 해당하는 read들의 mapping 된 좌위 서열들이 뽑혀있음. 이 각각의 list에 대해서 barcode 조합을 찾고 가장 많은 비율의 조합을 갖는 barcode를 선정하여 샘플의 서열을 (motif) 확정함. 
+
+
+# 바코드 로드 
+
+96well 각 웰마다 다른 barcoding을 위해서 forward 와 reverse primer에 각각 8개 12개 바코드를 사용하여 PCR product를 만들어냄. 기존 파일 `longread_barcode_sequencing_210419.Rmd` 참고 
+
+```{r, eval=F}
+barcodes <- readDNAStringSet("Nanopore_PCR_barcodes.fasta")
+
+bcfor <- c(
+  "GGTTAGT",
+  "AGGATCA",
+  "TCGCGTT",
+  "GGAAGAA",
+  "CAGAGAA",
+  "ACCAGAA",
+  "GACGGAA",
+  "AGTGGAA")
+
+bcrev <- c(
+  "TCACGAA",
+  "GTTCGAA",
+  "TGGTGAA",
+  "CTCTGAA",
+  "CCAACAA",
+  "GTGACAA",
+  "AAGGCAA",
+  "TGCGCAA",
+  "GAACCAA",
+  "CGTCCAA",
+  "GCCTCAA",
+  "CGCATAA"
+)
+```
+
+위 78개 바코드 중 8x12 90개 조합을 우선 사용함. 충남대에서 사용한 바코드는 앞쪽에 붙는 바코드는 ABCD 4개, 뒤쪽에 붙는 바코드는 12345 5개. `CNU_DNA barcoding_210527.xlsx` (추후 실험 plasmid가 주어질 경우 위 70개 중 어떤 바코드를 사용하는 것이 좋을지 결정해주는 분석 툴도 있으면 좋음.)
+
+
+
+# 바코드 비율 탐색 
+
+우선 read count에 해당하는 matrix를 만듦 
+
+```{r, eval=F}
+
+getreadcounts <- function(subselheadseq, subseltailseq, pfor, prev){
+  
+  headhits <- lapply(subselheadseq, function(x){
+    forhit <- vmatchPattern(pfor, x, min.mismatch=0, max.mismatch=0) %>% stack
+    forhit2 <- forhit[!duplicated(as.character(mcols(forhit)$name))]
+    return(forhit2)
+  })
+  
+  tailhits <- lapply(subseltailseq, function(x){
+    tailhit <- vmatchPattern(prev, x, min.mismatch=0, max.mismatch=0) %>% stack
+    tailhit2 <- tailhit[!duplicated(as.character(mcols(tailhit)$name))]
+    return(tailhit2)
+  })
+  
+  hits <- data.frame(head=unlist(lapply(headhits, length)), tail=unlist(lapply(tailhits, length)))
+  colnames(hits) <- c(pfor, prev)
+  return(hits)
+}
+
+
+# i <- 1
+# j <- 1
+hithead <- matrix(0, nrow=length(mutseq), ncol=length(bcfor))
+rownames(hithead) <- mutseq
+colnames(hithead) <- bcfor
+hittail <- matrix(0, nrow=length(mutseq), ncol=length(bcrev))
+rownames(hittail) <- mutseq
+colnames(hittail) <- bcrev
+for(i in 1:4){
+  for(j in 1:5){
+    pfor <- bcfor[i]
+    prev <- bcrev[j]
+    hits <- getreadcounts(subselheadseq, subseltailseq, pfor, prev)
+    hithead[rownames(hits),pfor] <- hithead[rownames(hits),pfor] + hits[,1]
+    hittail[rownames(hits),prev] <- hittail[rownames(hits),prev] + hits[,2]
+  }
+}
+
+```
+
+matrix 정보를 이용해서 A1, A2, ..., D4, D5 well에 어떤 서열이 들어 있는지 정보를 뽑아냄. 
+
+
+```{r, eval=F}
+#table(mutseq)
+
+hithead2 <- hithead %>% 
+  as.data.frame %>% 
+  rownames_to_column %>% 
+  select(motif=rowname, bcfor[1:4]) %>% 
+  pivot_longer(!motif) %>% 
+  mutate(type="H") %>% 
+  filter(value > 50)
+
+hittail2 <- hittail %>% 
+  as.data.frame %>% 
+  rownames_to_column %>% 
+  select(motif=rowname, bcrev[1:5]) %>% 
+  pivot_longer(!motif)  %>% 
+  mutate(type="T") %>% 
+  filter(value > 50)
+
+merged_data <- bind_rows(hithead2, hittail2)
+```
+
+위 통합된 merged_data 데이터를 다음과 같이 필터링하여 
+
+```{r, eval=F}
+
+tmpd <- list()
+for(i in names(mutseq)){
+  tmpd[[i]] <- merged_data %>% 
+    filter(motif==mutseq[i]) %>% 
+    select(-value) %>% 
+    pivot_wider(names_from=type, values_from=name) %>% 
+    mutate(well=i)
+}
+
+dd <- do.call(rbind, tmpd)
+print(dd)
+```
+
+
+![](images/result01.PNG)
+
+
+최종 결과는 위 그림과 같이 나왔으며 이는 충남대에서 보낸 아래 그림과 같이 총 20개 서열 중 15개를 맞힐 수 있음을 보였음. 
+
+![](images/result02.PNG)
+
+
+# 결론
+
+
+실험자로부터 plamid 와 pcr 구간 서열만 받아서 특정 범위의 위치에 대한 서열을 추정할 수 있음. 20개의 샘플 중 15개의 특정 구간에 대한 서열을 맞게 찾아냈음. 
+
+# 고찰
+
+* 잘 되는 barcode와 그렇지 않은 barcode가 있어 보이며 좀 더 긴 barcode의 탐색이 필요할 수도 있음. plasmid 서열에 따라서 다른 barcode를 사용할 수도 있음. 따라서 주어진 plasmid 서열에 대해서 적절한 barcode를 찾는 알고리즘/소프트웨어 필요. 
+* 96개 까지의 barcoding 과 fluid cell로 최대 몇 개의 샘플을 구분할 수 있을지 테스트 필요
+* 실제 barcode를 확인할 수 있도록 universal primer를 사용한 sanger 시퀀싱 필요할수도 있음. 
+
+
+
+
+
+

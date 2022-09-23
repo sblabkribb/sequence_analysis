@@ -1,0 +1,67 @@
+---
+title: "Sequence analysis"
+output: html_document
+date: '2022-09-23'
+---
+
+# Reference 
+
+https://greendaygh.github.io/kribbr2022/
+
+
+# Set environment  
+
+1. Installation R/Rstudio on your computer
+2. Create a directory "smmo" for the analysis
+3. Create a project "smmo"
+4. Install CRAN packages (tidyverse, ...)
+    - by seeing (https://greendaygh.github.io/kribbr2022/rrstudio-basics.html), do 1, 2, 3
+5. Install bioconductor packages (Biostrings, GenomicRanges, ShortReads, ...) 
+    - https://greendaygh.github.io/kribbr2022/bioconductor.html you can do 4
+6. Create a "data" directory for reference genomic sequence of M. capsulatus Bath 
+    - download .fasta, .gb (genbank file of the strain if possible) files from NCBI
+7. Copy fastq files to the data directory 
+
+
+# Sample description 
+
+- NGS (library) Samples: 3 fastq files 
+- 5k~6kbp, 5~6 genes, SMMO in genome
+- Sent cell pellets, extracted genomic DNA and sequencing
+- sample1: high fluorescence ?? reaction time 
+- sample2: high fluorescence ?? reaction time 
+- sample3: low fluoresscence 
+
+
+
+# fastq file loading
+
+
+일반적으로 ShortRead 패키지 사용, 본 교육에서는 bioconductor의 `Rfastp` 패지키 사용. Install from bioconductor if necessary. 
+
+```{r, eval=F}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("Rfastp")
+```
+
+
+파일을 다운로드하고 `rfastp` 파일로 읽음. 
+
+
+```{r, eval=F}
+library(Rfastp)
+
+fq <- "https://www.encodeproject.org/files/ENCFF332KDA/@@download/ENCFF332KDA.fastq.gz"
+download.file(fq, "ENCFF332KDA.fastq.gz")
+
+
+json_report <- rfastp(read1 = "ENCFF332KDA.fastq.gz", outputFastq = "ENCFF332KDA_rfastp")
+qcSummary(json_report)
+
+```
+
+
+# Alignment 
+

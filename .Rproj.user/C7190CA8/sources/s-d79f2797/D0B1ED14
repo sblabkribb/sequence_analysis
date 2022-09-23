@@ -1,0 +1,26 @@
+{
+    "id": "D0B1ED14",
+    "path": "~/2022/dev/dlpe/nanopore_clustering.R",
+    "project_path": null,
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1663904856250.0,
+    "source_on_save": false,
+    "relative_order": 5,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "38,43",
+        "scrollLine": "20"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1655209196,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1655209196,
+    "read_only": false,
+    "read_only_alternatives": []
+}
